@@ -1,0 +1,7 @@
+services:
+  app-020:
+    build: .
+    container_name: app-020-codegen-03
+    ports:
+      - "8120:80"
+    restart: unless-stopped
