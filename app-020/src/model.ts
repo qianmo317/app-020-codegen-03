@@ -137,6 +137,96 @@ export const FACILITY_CODES: Record<FacilityKind, string> = {
   sprinkler: 'SP',
 };
 
+// ---------- 疏散演练 ----------
+
+export type NodeKind = 'stair' | 'exit';
+
+/** 疏散路线关键节点：楼梯口或出口，按数组顺序即路线顺序 */
+export type DrillNode = {
+  id: string;
+  kind: NodeKind;
+  name: string; // 如「东楼梯口」「1F-EXIT-01 东门」
+  floorId?: string; // 节点所在楼层
+  facilityId?: string; // 关联安全出口设施（出口使用次数统计按它归并）
+};
+
+/** 按楼层记录的疏散情况 */
+export type DrillFloorRecord = {
+  floorId: string;
+  commander: string; // 本层疏散指挥
+  start?: string; // HH:mm 或 HH:mm:ss
+  end?: string;
+  blocked: boolean; // 是否堵在楼道口
+  note?: string;
+};
+
+/** 关键节点的一次通过时间 */
+export type NodePass = {
+  nodeId: string;
+  at?: string;
+};
+
+/** 问题挂接对象：具体房间、具体设施，或仅文字描述的位置 */
+export type IssueTarget =
+  | { kind: 'room'; floorId: string; roomId: string }
+  | { kind: 'facility'; floorId: string; facilityId: string }
+  | { kind: 'other'; floorId?: string; label: string };
+
+export type IssueStatus = 'open' | 'fixed' | 'wontfix';
+export type FollowUpResult = 'fixed' | 'still' | 'worse';
+
+export type DrillFollowUp = {
+  drillId: string; // 复查发生在哪次演练
+  result: FollowUpResult; // 已改进 / 仍存在 / 加重
+  note?: string;
+  at: string;
+};
+
+/** 演练中发现、并挂到具体房间/设施上的问题，跨演练跟踪整改 */
+export type DrillIssue = {
+  id: string;
+  buildingId: string;
+  drillId?: string; // 首次发现于哪次演练
+  target: IssueTarget;
+  description: string;
+  status: IssueStatus;
+  createdAt: string;
+  followUps: DrillFollowUp[];
+};
+
+export type Drill = {
+  id: string;
+  buildingId: string;
+  date: string; // YYYY-MM-DD
+  alarmAt: string; // HH:mm(:ss) 假设起火 / 警报时间
+  fireFloorId?: string; // 假设起火点：楼层
+  fireRoomId?: string; // 假设起火点：房间（可空，仅填文字）
+  fireNote?: string;
+  participants: number; // 参演人数
+  nodes: DrillNode[]; // 路线节点，有序
+  floors: DrillFloorRecord[]; // 各层记录
+  passes: NodePass[]; // 各节点通过时间
+  note?: string;
+  createdAt: string;
+};
+
+export const NODE_KIND_LABELS: Record<NodeKind, string> = {
+  stair: '楼梯口',
+  exit: '出口',
+};
+
+export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
+  open: '待整改',
+  fixed: '已整改',
+  wontfix: '不整改',
+};
+
+export const FOLLOWUP_LABELS: Record<FollowUpResult, string> = {
+  fixed: '已改进',
+  still: '仍存在',
+  worse: '加重',
+};
+
 export const USAGE_LABELS: Record<RoomUsage, string> = {
   office: '办公',
   retail: '商业',

@@ -4,6 +4,8 @@ import { BuildingPage } from './pages/Building';
 import { PrintPage } from './pages/Print';
 import { FacilitiesPage } from './pages/Facilities';
 import { RulesPage } from './pages/Rules';
+import { DrillsPage } from './pages/Drills';
+import { DrillDetailPage } from './pages/DrillDetail';
 import { Link, useRoute } from './router';
 
 export function App() {
@@ -15,6 +17,8 @@ export function App() {
   else if (seg0 === 'building' && seg1) content = <BuildingPage buildingId={seg1} />;
   else if (seg0 === 'floor' && seg1 && seg2 === 'print') content = <PrintPage floorId={seg1} />;
   else if (seg0 === 'floor' && seg1) content = <FloorEditor floorId={seg1} />;
+  else if (seg0 === 'drills') content = <DrillsPage buildingId={seg1} />;
+  else if (seg0 === 'drill' && seg1) content = <DrillDetailPage drillId={seg1} />;
   else if (seg0 === 'facilities') content = <FacilitiesPage />;
   else if (seg0 === 'rules') content = <RulesPage />;
   else content = <div className="page">页面不存在。<Link to="/">返回首页</Link></div>;
@@ -26,6 +30,7 @@ export function App() {
           <span className="brandmark" /> 消防疏散图
         </Link>
         <Link to="/">建筑</Link>
+        <Link to="/drills">疏散演练</Link>
         <Link to="/facilities">设施台账</Link>
         <Link to="/rules">规则</Link>
         <span className="hint" style={{ marginLeft: 'auto' }}>数据仅存于本机浏览器 · 断网可用</span>

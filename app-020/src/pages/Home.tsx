@@ -61,6 +61,7 @@ export function Home() {
               </div>
               <div className="cardactions">
                 <Link className="btn" to={`/building/${b.id}`}>打开</Link>
+                <Link className="btn" to={`/drills/${b.id}`}>演练</Link>
                 <button
                   className="danger"
                   onClick={() => {

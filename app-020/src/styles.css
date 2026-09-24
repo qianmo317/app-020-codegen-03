@@ -150,6 +150,20 @@ input, select {
 .ruletabs { display: flex; gap: 6px; margin: 12px 0; }
 .ruleform { max-width: 560px; }
 
+/* ---------- 疏散演练 ---------- */
+.twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 1100px) { .twocol { grid-template-columns: 1fr; } }
+.section h3 { margin: 0 0 8px; font-size: 15px; }
+.slowest-row { background: #fdecec; }
+.bad-input { border-color: var(--red); background: #fff7f7; }
+.segctrl { display: inline-flex; gap: 4px; }
+.segctrl button { padding: 2px 8px; font-size: 12px; }
+.bars { display: inline-flex; align-items: flex-end; gap: 3px; height: 24px; }
+.bar {
+  width: 12px; min-height: 2px; background: #9dbfe4; border-radius: 2px 2px 0 0; display: inline-block;
+}
+.bar:last-child { background: var(--blue); }
+
 /* ---------- 打印页 ---------- */
 .printpage { background: #e9ebee; min-height: 100%; }
 .print-sheet {

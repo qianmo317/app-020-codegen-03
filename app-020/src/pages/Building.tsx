@@ -51,6 +51,9 @@ export function BuildingPage({ buildingId }: { buildingId: string }) {
           ))}
         </select>
         <span className="hint">建筑类别决定校验规则（在「规则」页调整）</span>
+        <Link className="btn" to={`/drills/${building.id}`} style={{ marginLeft: 'auto' }}>
+          疏散演练记录与统计 →
+        </Link>
       </div>
 
       <h2>楼层</h2>
@@ -92,6 +95,7 @@ export function BuildingPage({ buildingId }: { buildingId: string }) {
                 <td>
                   <Link className="btn" to={`/floor/${f.id}`}>编辑</Link>{' '}
                   <Link className="btn" to={`/floor/${f.id}/print`}>出图</Link>{' '}
+                  <Link className="btn" to={`/drills/${building.id}`}>演练</Link>{' '}
                   <button
                     className="danger"
                     onClick={() => confirm(`删除 ${floorLabel(f.level)}？`) && deleteFloor(f.id)}

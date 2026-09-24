@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 
 /** 轻量 hash 路由（不引第三方依赖）：#/building/:id、#/floor/:id、#/floor/:id/print ... */
 export function currentPath(): string {
@@ -22,11 +22,12 @@ export function useRoute(): { path: string; parts: string[] } {
   return { path, parts: path.split('/').filter(Boolean) };
 }
 
-export function Link({ to, className, children }: { to: string; className?: string; children: ReactNode }) {
+export function Link({ to, className, style, children }: { to: string; className?: string; style?: CSSProperties; children: ReactNode }) {
   return (
     <a
       href={`#${to}`}
       className={className}
+      style={style}
       onClick={(e) => {
         e.preventDefault();
         navigate(to);
