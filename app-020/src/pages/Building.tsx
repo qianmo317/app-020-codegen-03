@@ -51,6 +51,9 @@ export function BuildingPage({ buildingId }: { buildingId: string }) {
           ))}
         </select>
         <span className="hint">建筑类别决定校验规则（在「规则」页调整）</span>
+        <Link className="btn" to={`/drills/${building.id}`} style={{ marginLeft: 'auto' }}>
+          疏散演练记录与统计 →
+        </Link>
       </div>
 
       <h2>楼层</h2>

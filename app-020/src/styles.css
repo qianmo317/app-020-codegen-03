@@ -150,6 +150,34 @@ input, select {
 .ruletabs { display: flex; gap: 6px; margin: 12px 0; }
 .ruleform { max-width: 560px; }
 
+/* ---------- 疏散演练 ---------- */
+.bars { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.bar-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.bar-label { width: 110px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { flex: 1; height: 12px; background: #f2f4f6; border-radius: 6px; overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: var(--blue); border-radius: 6px; min-width: 3px; transition: width .2s; }
+.bar-fill.bad-fill { background: var(--red); }
+.bar-val { width: 56px; flex: none; text-align: right; color: var(--muted); }
+.slowest-box { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.slowest-box b { font-size: 22px; }
+
+.segment-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.seg {
+  display: inline-flex; flex-direction: column; gap: 1px;
+  border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font-size: 12px; background: #fff;
+  max-width: 190px;
+}
+.seg .seg-name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seg b { font-size: 13px; }
+.seg-slow { border-color: var(--red); background: #fdecea; }
+.seg-slow b { color: var(--red); }
+.seg-bad { border-color: #b26a00; background: #fff7e6; }
+.seg-bad b { color: #b26a00; }
+.issue-resolved { opacity: 0.75; }
+.issue-wontfix { opacity: 0.6; }
+details.section summary { cursor: pointer; }
+textarea { font: inherit; padding: 6px 8px; border: 1px solid #c8d0d8; border-radius: 6px; width: 100%; resize: vertical; }
+
 /* ---------- 打印页 ---------- */
 .printpage { background: #e9ebee; min-height: 100%; }
 .print-sheet {

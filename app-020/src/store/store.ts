@@ -3,8 +3,13 @@ import type {
   Building,
   BuildingKind,
   CheckRecord,
+  Drill,
+  DrillFloorRecord,
+  DrillIssue,
+  DrillNode,
   Facility,
   FacilityKind,
+  FireOrigin,
   Floor,
   Pt,
   Room,
@@ -24,6 +29,8 @@ export type AppState = {
   rules: Record<BuildingKind, RuleSet>;
   /** 「您在此」标记（打印版疏散图），按楼层存 */
   marks: Record<string, Pt>;
+  /** 疏散演练记录（按建筑挂接） */
+  drills: Drill[];
 };
 
 function loadState(): AppState {
@@ -31,20 +38,21 @@ function loadState(): AppState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const s = JSON.parse(raw) as Partial<AppState>;
-      // 缺失的节用默认值补齐（如旧版本数据没有 rules/marks），而不是整体丢弃用户数据
+      // 缺失的节用默认值补齐（如旧版本数据没有 rules/marks/drills），而不是整体丢弃用户数据
       if (s && Array.isArray(s.buildings) && s.floors) {
         return {
           buildings: s.buildings,
           floors: s.floors,
           rules: { ...structuredClone(DEFAULT_RULES), ...(s.rules ?? {}) },
           marks: s.marks ?? {},
+          drills: s.drills ?? [],
         };
       }
     }
   } catch {
     /* 损坏则重新开始 */
   }
-  return { buildings: [], floors: {}, rules: structuredClone(DEFAULT_RULES), marks: {} };
+  return { buildings: [], floors: {}, rules: structuredClone(DEFAULT_RULES), marks: {}, drills: [] };
 }
 
 let state: AppState = loadState();
@@ -64,12 +72,13 @@ function persist() {
 
 function setState(patch: (s: AppState) => void) {
   patch(state);
-  // 浅拷贝各容器：保证 s.buildings / s.floors / s.rules / s.marks 选择器拿到新引用
+  // 浅拷贝各容器：保证 s.buildings / s.floors / s.rules / s.marks / s.drills 选择器拿到新引用
   state = {
     buildings: [...state.buildings],
     floors: { ...state.floors },
     rules: { ...state.rules },
     marks: { ...state.marks },
+    drills: [...state.drills],
   };
   persist();
   listeners.forEach((l) => l());
@@ -124,6 +133,8 @@ export function deleteBuilding(id: string) {
     if (!b) return;
     for (const fid of b.floors) delete s.floors[fid];
     s.buildings = s.buildings.filter((x) => x.id !== id);
+    // 演练整份随建筑删除
+    s.drills = s.drills.filter((d) => d.buildingId !== id);
   });
 }
 
@@ -145,6 +156,12 @@ export function addFloor(buildingId: string, level: number): string {
     s.floors[id] = floor;
     const bi = s.buildings.findIndex((x) => x.id === buildingId);
     if (bi >= 0) s.buildings[bi] = { ...s.buildings[bi], floors: [...s.buildings[bi].floors, id] };
+    // 已有演练补一层空记录，不覆盖已录数据
+    for (const d of s.drills) {
+      if (d.buildingId === buildingId && !d.floors.some((r) => r.floorId === id)) {
+        d.floors = [...d.floors, emptyFloorRecord(id)];
+      }
+    }
   });
   return id;
 }
@@ -159,6 +176,19 @@ export function deleteFloor(floorId: string) {
     }
     delete s.floors[floorId];
     delete s.marks[floorId];
+    // 演练记录里摘掉该层（保留演练本身与其他楼层数据；问题若只挂在该层也摘掉定位）
+    s.drills = s.drills.map((d) => {
+      const hasFloor = d.floors.some((r) => r.floorId === floorId);
+      const hasIssue = d.issues.some((i) => i.floorId === floorId);
+      if (!hasFloor && !hasIssue) return d;
+      return {
+        ...d,
+        floors: d.floors.filter((r) => r.floorId !== floorId),
+        issues: d.issues.map((i) =>
+          i.floorId === floorId ? { ...i, floorId: undefined, roomId: undefined, facilityId: undefined } : i,
+        ),
+      };
+    });
   });
 }
 
@@ -283,6 +313,165 @@ export function setLastValidation(floorId: string, result: ValidationResult) {
   });
 }
 
+// ---------- 疏散演练 ----------
+
+/** 空楼层记录：跟随建筑楼层初始化，指挥/时间留空待录 */
+export function emptyFloorRecord(floorId: string): DrillFloorRecord {
+  return { floorId, commander: '', participants: null, startedAt: '', completedAt: '', blocked: false, nodes: [] };
+}
+
+/** 新建演练：默认带出建筑全部楼层的空记录，便于逐层补录 */
+export function addDrill(buildingId: string, date: string): string {
+  const id = uid();
+  const b = state.buildings.find((x) => x.id === buildingId);
+  const floors = (b?.floors ?? []).map((fid) => emptyFloorRecord(fid));
+  const drill: Drill = {
+    id,
+    buildingId,
+    date,
+    startedAt: date ? `${date}T09:00` : '',
+    participants: null,
+    fireOrigin: {},
+    floors,
+    issues: [],
+    createdAt: new Date().toISOString(),
+  };
+  setState((s) => s.drills.push(drill));
+  return id;
+}
+
+export function deleteDrill(drillId: string) {
+  setState((s) => {
+    s.drills = s.drills.filter((d) => d.id !== drillId);
+  });
+}
+
+/** 演练头字段（日期/名称/场景/总人数/起始时刻） */
+export function updateDrill(
+  drillId: string,
+  patch: Partial<Pick<Drill, 'date' | 'startedAt' | 'name' | 'scenario' | 'participants' | 'fireOrigin'>>,
+) {
+  mutateDrill(drillId, (d) => Object.assign(d, patch));
+}
+
+function mutateDrill(drillId: string, mut: (d: Drill) => void) {
+  setState((s) => {
+    const i = s.drills.findIndex((d) => d.id === drillId);
+    if (i < 0) return;
+    const next: Drill = structuredClone(s.drills[i]);
+    mut(next);
+    s.drills[i] = next;
+  });
+}
+
+function mutateFloorRecord(drillId: string, floorId: string, mut: (r: DrillFloorRecord) => void) {
+  mutateDrill(drillId, (d) => {
+    const r = d.floors.find((x) => x.floorId === floorId);
+    if (r) mut(r);
+  });
+}
+
+export function setDrillFloorRecord(drillId: string, floorId: string, patch: Partial<DrillFloorRecord>) {
+  mutateFloorRecord(drillId, floorId, (r) => Object.assign(r, patch));
+}
+
+/** 建筑新增楼层后，给已有演练补空记录（不覆盖已录数据） */
+export function ensureDrillFloor(drillId: string, floorId: string) {
+  mutateDrill(drillId, (d) => {
+    if (!d.floors.some((r) => r.floorId === floorId)) d.floors.push(emptyFloorRecord(floorId));
+  });
+}
+
+export function addDrillNode(drillId: string, floorId: string, kind: DrillNode['kind']): string {
+  const nodeId = uid();
+  mutateFloorRecord(drillId, floorId, (r) => {
+    r.nodes.push({ id: nodeId, kind, label: kind === 'stair' ? '楼梯口' : '出口', time: '' });
+  });
+  return nodeId;
+}
+
+export function updateDrillNode(drillId: string, floorId: string, nodeId: string, patch: Partial<Omit<DrillNode, 'id'>>) {
+  mutateFloorRecord(drillId, floorId, (r) => {
+    const n = r.nodes.find((x) => x.id === nodeId);
+    if (n) Object.assign(n, patch);
+  });
+}
+
+export function removeDrillNode(drillId: string, floorId: string, nodeId: string) {
+  mutateFloorRecord(drillId, floorId, (r) => {
+    r.nodes = r.nodes.filter((x) => x.id !== nodeId);
+  });
+}
+
+export function moveDrillNode(drillId: string, floorId: string, nodeId: string, dir: -1 | 1) {
+  mutateFloorRecord(drillId, floorId, (r) => {
+    const i = r.nodes.findIndex((x) => x.id === nodeId);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= r.nodes.length) return;
+    const [n] = r.nodes.splice(i, 1);
+    r.nodes.splice(j, 0, n);
+  });
+}
+
+// ---------- 演练问题 ----------
+
+export function addDrillIssue(drillId: string, issue: Omit<DrillIssue, 'id' | 'drillId' | 'status'>): string {
+  const id = uid();
+  mutateDrill(drillId, (d) => {
+    d.issues.push({ ...issue, id, drillId: d.id, status: 'open' });
+  });
+  return id;
+}
+
+export function updateDrillIssue(
+  drillId: string,
+  issueId: string,
+  patch: Partial<Omit<DrillIssue, 'id' | 'drillId'>>,
+) {
+  mutateDrill(drillId, (d) => {
+    const i = d.issues.find((x) => x.id === issueId);
+    if (i) Object.assign(i, patch);
+  });
+}
+
+export function removeDrillIssue(drillId: string, issueId: string) {
+  mutateDrill(drillId, (d) => {
+    d.issues = d.issues.filter((x) => x.id !== issueId);
+  });
+}
+
+/**
+ * 复查上次遗留问题：在本次演练中标记结果。
+ * 不改原问题归属，只更新状态/解决于哪次演练；仍存在则保持 open 并在描述里可补注。
+ */
+export function resolveDrillIssue(
+  issueId: string,
+  result: 'resolved' | 'still_open' | 'wontfix',
+  drillId: string,
+  date: string,
+  note?: string,
+) {
+  setState((s) => {
+    for (let di = 0; di < s.drills.length; di++) {
+      const i = s.drills[di].issues.find((x) => x.id === issueId);
+      if (!i) continue;
+      const nextDrill = structuredClone(s.drills[di]);
+      const ni = nextDrill.issues.find((x) => x.id === issueId)!;
+      if (result === 'still_open') {
+        ni.status = 'open';
+        if (note) ni.followUpNote = note;
+      } else {
+        ni.status = result;
+        ni.resolvedDrillId = drillId;
+        ni.resolvedAt = date;
+        if (note) ni.followUpNote = note;
+      }
+      s.drills[di] = nextDrill;
+      break;
+    }
+  });
+}
+
 // ---------- 规则 ----------
 
 export function updateRules(kind: BuildingKind, patch: Partial<Omit<RuleSet, 'buildingKind' | 'version'>>) {
@@ -349,7 +538,7 @@ export function loadDemo(): string {
     mkF('exit_sign', 1, 1.7, '1F-ES-01', [{ date: dateStr(15), status: 'ok' }]);
     mkF('exit_sign', 40, 1.7, '1F-ES-02', [{ date: dateStr(15), status: 'ok' }]);
     mkF('emergency_light', 20.5, 0.4, '1F-EL-01', [{ date: dateStr(15), status: 'ok' }]);
-    const exits = facilities.filter((f) => f.kind === 'exit').map((f) => f.id);
+    const exits = facilities.filter((f) => f.kind === 'exit');
     s.floors[floorId] = {
       id: floorId,
       buildingId,
@@ -357,9 +546,72 @@ export function loadDemo(): string {
       scaleMmPerUnit: 1,
       rooms,
       facilities,
-      exits,
+      exits: exits.map((f) => f.id),
       version: 0,
     };
+
+    // 两次疏散演练样例：同楼同出口，第二次更快；第一次的问题一个已改进、一个待复查
+    const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86400000).toISOString().slice(0, 10);
+    const mkDrill = (daysAgo: number, times: { start: string; end: string; e1: string; e2: string }, participants: number, issues: Drill['issues']): Drill => {
+      const date = day(daysAgo);
+      const dt = (hhmm: string) => `${date}T${hhmm}`;
+      const drillId = uid();
+      return {
+        id: drillId,
+        buildingId,
+        date,
+        startedAt: dt('09:00'),
+        name: daysAgo > 20 ? '上半年疏散演练' : '三季度疏散演练',
+        scenario: '工作日上午模拟 103 仓库电器起火',
+        participants,
+        fireOrigin: { floorId, roomId: rooms.find((r) => r.name === '103室')?.id, detail: '配电箱旁' },
+        floors: [
+          {
+            floorId,
+            commander: '王安全',
+            participants,
+            startedAt: dt(times.start),
+            completedAt: dt(times.end),
+            blocked: daysAgo > 20,
+            blockedNote: daysAgo > 20 ? '西出口指示灯不亮，人群迟疑聚集' : undefined,
+            nodes: [
+              { id: uid(), kind: 'exit', label: '1F-EXIT-01', exitFacilityId: exits[0].id, time: dt(times.e1) },
+              { id: uid(), kind: 'exit', label: '1F-EXIT-02', exitFacilityId: exits[1].id, time: dt(times.e2) },
+            ],
+          },
+        ],
+        issues: issues.map((i) => ({ ...i, id: uid(), drillId, foundAt: date })),
+        createdAt: new Date().toISOString(),
+      };
+    };
+    // 第一次：EXIT-01 09:04 通过、EXIT-02 09:06，09:08 撤完；两个问题
+    const d1 = mkDrill(
+      60,
+      { start: '09:00', end: '09:08', e1: '09:04', e2: '09:06' },
+      96,
+      [
+        {
+          id: '', drillId: '', foundAt: '', description: '西安全出口（1F-EXIT-02）指示灯不亮，疏散人群迟疑',
+          floorId, facilityId: exits[1].id, status: 'resolved',
+          resolvedAt: day(20),
+        },
+        {
+          id: '', drillId: '', foundAt: '', description: '103 仓库门口堆放纸箱，疏散路线变窄',
+          floorId, roomId: rooms.find((r) => r.name === '103室')?.id, status: 'open',
+        },
+      ],
+    );
+    // 第二次：EXIT-01 09:03、EXIT-02 09:04，09:06 撤完，无拥堵；第一个问题已于本次复查确认改进
+    const d2 = mkDrill(
+      20,
+      { start: '09:00', end: '09:06', e1: '09:03', e2: '09:04' },
+      102,
+      [],
+    );
+    // 回填问题归属与解决于哪次演练
+    d1.issues[0].resolvedDrillId = d2.id;
+    d1.issues[0].followUpNote = '指示灯已更换，第二次演练无人迟疑';
+    s.drills.push(d1, d2);
   });
   persist();
   return bid;

@@ -119,6 +119,92 @@ export type ValidationResult = {
   };
 };
 
+// ---------- 疏散演练 ----------
+
+/** 疏散路线关键节点类型：楼梯口（层间节点）或出口（离楼节点） */
+export type DrillNodeKind = 'stair' | 'exit';
+
+/**
+ * 路线关键节点通过记录。节点按顺序组成该层的疏散路线：
+ * 上一层的末端楼梯口与本层首个楼梯口表示同一段楼梯（跨层段在统计时单独标记）。
+ */
+export type DrillNode = {
+  id: string;
+  kind: DrillNodeKind;
+  /** 节点名称：自由文本（如「东楼梯口」）或出口设施 code（1F-EXIT-01） */
+  label: string;
+  /** 关联的出口设施 id（kind==='exit' 时，用于出口使用频次统计） */
+  exitFacilityId?: string;
+  /** 首次通过时刻 'YYYY-MM-DDTHH:mm[:ss]'，空串表示未记录 */
+  time: string;
+};
+
+/** 按楼层记录的演练数据 */
+export type DrillFloorRecord = {
+  floorId: string;
+  commander: string; // 本层疏散指挥
+  participants: number | null; // 本层参演人数（总人数之外的分层计数，可空）
+  startedAt: string; // 本层开始时刻
+  completedAt: string; // 本层结束时刻（最后一人撤离本层）
+  blocked: boolean; // 有没有堵在楼道口
+  blockedNote?: string; // 拥堵位置/情况说明
+  /** 路线关键节点（楼梯口、出口），按通过先后排序 */
+  nodes: DrillNode[];
+  note?: string;
+};
+
+/** 假设起火点 */
+export type FireOrigin = {
+  floorId?: string;
+  roomId?: string;
+  /** 楼层/房间之外的补充描述（如「配电井旁」），也可在未选房间时单独使用 */
+  detail?: string;
+};
+
+export type DrillIssueStatus = 'open' | 'resolved' | 'wontfix';
+
+/** 演练发现的问题：挂到具体房间或设施上，供下次演练复查 */
+export type DrillIssue = {
+  id: string;
+  drillId: string; // 发现该问题的演练
+  description: string;
+  floorId?: string; // 定位：楼层
+  roomId?: string; // 定位：房间（与 facilityId 二选一或并存）
+  facilityId?: string; // 定位：设施
+  foundAt: string; // YYYY-MM-DD
+  status: DrillIssueStatus;
+  /** 在哪次演练中确认改进（复查通过时回填） */
+  resolvedDrillId?: string;
+  resolvedAt?: string;
+  followUpNote?: string;
+};
+
+export type Drill = {
+  id: string;
+  buildingId: string;
+  date: string; // YYYY-MM-DD
+  /** 演练开始时刻（全楼统一计时起点），可仅精确到分 */
+  startedAt: string;
+  name?: string; // 备注名，如「三季度全员演练」
+  scenario?: string; // 场景说明
+  participants: number | null; // 参演总人数
+  fireOrigin: FireOrigin;
+  floors: DrillFloorRecord[];
+  issues: DrillIssue[];
+  createdAt: string;
+};
+
+export const DRILL_NODE_LABELS: Record<DrillNodeKind, string> = {
+  stair: '楼梯口',
+  exit: '出口',
+};
+
+export const DRILL_ISSUE_STATUS_LABELS: Record<DrillIssueStatus, string> = {
+  open: '待改进',
+  resolved: '已改进',
+  wontfix: '不处理',
+};
+
 export const FACILITY_LABELS: Record<FacilityKind, string> = {
   extinguisher: '灭火器',
   hydrant: '消火栓',

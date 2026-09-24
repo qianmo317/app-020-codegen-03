@@ -22,11 +22,12 @@ export function useRoute(): { path: string; parts: string[] } {
   return { path, parts: path.split('/').filter(Boolean) };
 }
 
-export function Link({ to, className, children }: { to: string; className?: string; children: ReactNode }) {
+export function Link({ to, className, style, children }: { to: string; className?: string; style?: React.CSSProperties; children: ReactNode }) {
   return (
     <a
       href={`#${to}`}
       className={className}
+      style={style}
       onClick={(e) => {
         e.preventDefault();
         navigate(to);
